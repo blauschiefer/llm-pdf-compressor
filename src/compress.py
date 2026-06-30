@@ -64,7 +64,7 @@ def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float, int
     for page in writer.pages:
         page.compress_content_streams()
 
-    writer.compress_identical_objects(remove_identicals=True, remove_orphans=True)
+    writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
 
     with open(output_path, "wb") as f:
         writer.write(f)
