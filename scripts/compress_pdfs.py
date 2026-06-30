@@ -6,26 +6,50 @@ PDF-Kompressor für LLM-Nutzung
 - Überspringt Dateien die bereits kleiner als 30 MB sind
 """
 
-import os
+import logging
 import sys
+from datetime import datetime
 from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 
 BASE_DIR = Path(__file__).parent.parent
 IMPORT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
+LOG_DIR = BASE_DIR / "logs"
 SIZE_LIMIT_MB = 30
-SIZE_LIMIT_BYTES = SIZE_LIMIT_MB * 1024 * 1024
 SUFFIX = "_llm-optimized"
 
 
+def setup_logging() -> logging.Logger:
+    LOG_DIR.mkdir(exist_ok=True)
+    log_file = LOG_DIR / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
+
+    logger = logging.getLogger("pdf-compressor")
+    logger.setLevel(logging.DEBUG)
+
+    fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+
+    file_handler = logging.FileHandler(log_file, encoding="utf-8")
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(fmt)
+
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setLevel(logging.INFO)
+    console_handler.setFormatter(fmt)
+
+    logger.addHandler(file_handler)
+    logger.addHandler(console_handler)
+
+    logger.info(f"Log-Datei: {log_file}")
+    return logger
+
+
 def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float]:
-    """Entfernt Bilder und komprimiert die PDF. Gibt (vorher_mb, nachher_mb) zurück."""
     reader = PdfReader(str(input_path))
     writer = PdfWriter()
 
+    images_removed = 0
     for page in reader.pages:
-        # Bilder aus den Ressourcen der Seite entfernen
         if "/Resources" in page:
             resources = page["/Resources"]
             if "/XObject" in resources:
@@ -36,10 +60,9 @@ def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float]:
                 ]
                 for key in keys_to_delete:
                     del xobject[key]
-
+                images_removed += len(keys_to_delete)
         writer.add_page(page)
 
-    # Komprimierung aktivieren
     for page in writer.pages:
         page.compress_content_streams()
 
@@ -50,45 +73,57 @@ def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float]:
 
     size_before = input_path.stat().st_size / (1024 * 1024)
     size_after = output_path.stat().st_size / (1024 * 1024)
-    return size_before, size_after
+    return size_before, size_after, images_removed
 
 
 def main():
+    log = setup_logging()
+
     if not IMPORT_DIR.exists():
-        print(f"Input-Ordner nicht gefunden: {IMPORT_DIR}")
+        log.error(f"Input-Ordner nicht gefunden: {IMPORT_DIR}")
         sys.exit(1)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
 
     pdf_files = sorted(IMPORT_DIR.rglob("*.pdf"))
     if not pdf_files:
-        print("Keine PDF-Dateien im input-Ordner gefunden.")
+        log.warning("Keine PDF-Dateien im input-Ordner gefunden.")
         return
 
-    print(f"Gefunden: {len(pdf_files)} PDF-Datei(en)\n")
+    log.info(f"Gefunden: {len(pdf_files)} PDF-Datei(en)")
+    log.info("-" * 60)
+
+    skipped = processed = errors = 0
 
     for pdf_path in pdf_files:
         size_mb = pdf_path.stat().st_size / (1024 * 1024)
-        # Unterordner-Struktur im output beibehalten
         relative = pdf_path.relative_to(IMPORT_DIR)
         output_path = OUTPUT_DIR / relative.parent / (pdf_path.stem + SUFFIX + pdf_path.suffix)
 
         if size_mb < SIZE_LIMIT_MB:
-            print(f"[SKIP]    {relative}  ({size_mb:.1f} MB < {SIZE_LIMIT_MB} MB)")
+            log.info(f"[SKIP]    {relative}  ({size_mb:.1f} MB)")
+            skipped += 1
             continue
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        print(f"[PROCESS] {relative}  ({size_mb:.1f} MB)", end=" ... ", flush=True)
+        log.info(f"[PROCESS] {relative}  ({size_mb:.1f} MB) ...")
 
         try:
-            size_before, size_after = compress_pdf(pdf_path, output_path)
+            size_before, size_after, images_removed = compress_pdf(pdf_path, output_path)
             reduction = (1 - size_after / size_before) * 100
-            status = "OK" if size_after < SIZE_LIMIT_MB else "WARNUNG: immer noch > 30 MB"
-            print(f"{size_before:.1f} MB → {size_after:.1f} MB  (-{reduction:.0f}%)  [{status}]")
-        except Exception as e:
-            print(f"FEHLER: {e}")
+            log.info(f"          {size_before:.1f} MB → {size_after:.1f} MB  (-{reduction:.0f}%)  Bilder entfernt: {images_removed}")
 
-    print(f"\nFertig. Ausgabe-Dateien in: {OUTPUT_DIR}")
+            if size_after >= SIZE_LIMIT_MB:
+                log.warning(f"          Datei immer noch > {SIZE_LIMIT_MB} MB nach Komprimierung: {output_path.name}")
+
+            processed += 1
+        except Exception as e:
+            log.error(f"          FEHLER bei {relative}: {e}", exc_info=True)
+            errors += 1
+
+    log.info("-" * 60)
+    log.info(f"Fertig — verarbeitet: {processed}, übersprungen: {skipped}, Fehler: {errors}")
+    log.info(f"Ausgabe-Dateien in: {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":
