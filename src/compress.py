@@ -1,13 +1,14 @@
 """
 LLM PDF Compressor
-Strips images from PDF files and compresses them to under 30 MB.
+Strips embedded images from PDF files so they can be uploaded to Claude Projects (30 MB limit).
+Text content and structure are fully preserved.
 """
 
 import logging
 import sys
 from datetime import datetime
 from pathlib import Path
-from pypdf import PdfReader, PdfWriter
+import pikepdf
 
 BASE_DIR = Path(__file__).parent.parent
 INPUT_DIR = BASE_DIR / "input"
@@ -41,33 +42,23 @@ def setup_logging() -> logging.Logger:
     return logger
 
 
-def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float, int]:
-    """Strip images and compress a PDF. Returns (size_before_mb, size_after_mb, images_removed)."""
-    reader = PdfReader(str(input_path))
-    writer = PdfWriter()
-
+def strip_images(input_path: Path, output_path: Path) -> tuple[float, float, int]:
+    """Remove all embedded images from a PDF. Returns (size_before_mb, size_after_mb, images_removed)."""
     images_removed = 0
-    for page in reader.pages:
-        if "/Resources" in page:
-            resources = page["/Resources"]
-            if "/XObject" in resources:
-                xobject = resources["/XObject"].get_object()
-                keys_to_delete = [
-                    key for key, obj in xobject.items()
-                    if obj.get_object().get("/Subtype") == "/Image"
-                ]
-                for key in keys_to_delete:
-                    del xobject[key]
-                images_removed += len(keys_to_delete)
-        writer.add_page(page)
 
-    for page in writer.pages:
-        page.compress_content_streams()
+    with pikepdf.open(str(input_path)) as pdf:
+        for page in pdf.pages:
+            resources = page.get("/Resources", {})
+            xobjects = resources.get("/XObject", {})
+            keys_to_delete = [
+                key for key in xobjects
+                if xobjects[key].get("/Subtype") == "/Image"
+            ]
+            for key in keys_to_delete:
+                del xobjects[key]
+            images_removed += len(keys_to_delete)
 
-    writer.compress_identical_objects(remove_duplicates=True, remove_unreferenced=True)
-
-    with open(output_path, "wb") as f:
-        writer.write(f)
+        pdf.save(str(output_path))
 
     size_before = input_path.stat().st_size / (1024 * 1024)
     size_after = output_path.stat().st_size / (1024 * 1024)
@@ -99,7 +90,7 @@ def main():
         output_path = OUTPUT_DIR / relative.parent / (pdf_path.stem + OUTPUT_SUFFIX + pdf_path.suffix)
 
         if size_mb < SIZE_LIMIT_MB:
-            log.info(f"[SKIP]    {relative}  ({size_mb:.1f} MB)")
+            log.info(f"[SKIP]    {relative}  ({size_mb:.1f} MB — already under {SIZE_LIMIT_MB} MB)")
             skipped += 1
             continue
 
@@ -107,12 +98,12 @@ def main():
         log.info(f"[PROCESS] {relative}  ({size_mb:.1f} MB) ...")
 
         try:
-            size_before, size_after, images_removed = compress_pdf(pdf_path, output_path)
+            size_before, size_after, images_removed = strip_images(pdf_path, output_path)
             reduction = (1 - size_after / size_before) * 100
             log.info(f"          {size_before:.1f} MB → {size_after:.1f} MB  (-{reduction:.0f}%)  images removed: {images_removed}")
 
             if size_after >= SIZE_LIMIT_MB:
-                log.warning(f"          Output still exceeds {SIZE_LIMIT_MB} MB: {output_path.name}")
+                log.warning(f"          Still exceeds {SIZE_LIMIT_MB} MB after stripping: {output_path.name}")
 
             processed += 1
         except Exception as e:

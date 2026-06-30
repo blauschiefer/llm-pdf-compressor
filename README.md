@@ -1,6 +1,6 @@
 # llm-pdf-compressor
 
-A command-line tool that strips images from PDF files and compresses them to under 30 MB for use with large language models (LLMs).
+Strips embedded images from scientific PDF textbooks so they can be uploaded to Claude Projects (30 MB file limit). Text content and structure are fully preserved — images are irrelevant for LLM text processing.
 
 ## Features
 
