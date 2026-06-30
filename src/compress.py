@@ -1,9 +1,6 @@
 """
-PDF-Kompressor für LLM-Nutzung
-- Entfernt alle Bilder aus PDFs
-- Ziel: unter 30 MB
-- Fügt Suffix "_llm-optimized" zum Dateinamen hinzu
-- Überspringt Dateien die bereits kleiner als 30 MB sind
+LLM PDF Compressor
+Strips images from PDF files and compresses them to under 30 MB.
 """
 
 import logging
@@ -13,18 +10,18 @@ from pathlib import Path
 from pypdf import PdfReader, PdfWriter
 
 BASE_DIR = Path(__file__).parent.parent
-IMPORT_DIR = BASE_DIR / "input"
+INPUT_DIR = BASE_DIR / "input"
 OUTPUT_DIR = BASE_DIR / "output"
 LOG_DIR = BASE_DIR / "logs"
 SIZE_LIMIT_MB = 30
-SUFFIX = "_llm-optimized"
+OUTPUT_SUFFIX = "_llm-optimized"
 
 
 def setup_logging() -> logging.Logger:
     LOG_DIR.mkdir(exist_ok=True)
     log_file = LOG_DIR / f"{datetime.now().strftime('%Y-%m-%d_%H-%M-%S')}.log"
 
-    logger = logging.getLogger("pdf-compressor")
+    logger = logging.getLogger("llm-pdf-compressor")
     logger.setLevel(logging.DEBUG)
 
     fmt = logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
@@ -40,11 +37,12 @@ def setup_logging() -> logging.Logger:
     logger.addHandler(file_handler)
     logger.addHandler(console_handler)
 
-    logger.info(f"Log-Datei: {log_file}")
+    logger.info(f"Log file: {log_file}")
     return logger
 
 
-def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float]:
+def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float, int]:
+    """Strip images and compress a PDF. Returns (size_before_mb, size_after_mb, images_removed)."""
     reader = PdfReader(str(input_path))
     writer = PdfWriter()
 
@@ -79,26 +77,26 @@ def compress_pdf(input_path: Path, output_path: Path) -> tuple[float, float]:
 def main():
     log = setup_logging()
 
-    if not IMPORT_DIR.exists():
-        log.error(f"Input-Ordner nicht gefunden: {IMPORT_DIR}")
+    if not INPUT_DIR.exists():
+        log.error(f"Input directory not found: {INPUT_DIR}")
         sys.exit(1)
 
     OUTPUT_DIR.mkdir(exist_ok=True)
 
-    pdf_files = sorted(IMPORT_DIR.rglob("*.pdf"))
+    pdf_files = sorted(INPUT_DIR.rglob("*.pdf"))
     if not pdf_files:
-        log.warning("Keine PDF-Dateien im input-Ordner gefunden.")
+        log.warning("No PDF files found in input directory.")
         return
 
-    log.info(f"Gefunden: {len(pdf_files)} PDF-Datei(en)")
+    log.info(f"Found {len(pdf_files)} PDF file(s)")
     log.info("-" * 60)
 
     skipped = processed = errors = 0
 
     for pdf_path in pdf_files:
         size_mb = pdf_path.stat().st_size / (1024 * 1024)
-        relative = pdf_path.relative_to(IMPORT_DIR)
-        output_path = OUTPUT_DIR / relative.parent / (pdf_path.stem + SUFFIX + pdf_path.suffix)
+        relative = pdf_path.relative_to(INPUT_DIR)
+        output_path = OUTPUT_DIR / relative.parent / (pdf_path.stem + OUTPUT_SUFFIX + pdf_path.suffix)
 
         if size_mb < SIZE_LIMIT_MB:
             log.info(f"[SKIP]    {relative}  ({size_mb:.1f} MB)")
@@ -111,19 +109,19 @@ def main():
         try:
             size_before, size_after, images_removed = compress_pdf(pdf_path, output_path)
             reduction = (1 - size_after / size_before) * 100
-            log.info(f"          {size_before:.1f} MB → {size_after:.1f} MB  (-{reduction:.0f}%)  Bilder entfernt: {images_removed}")
+            log.info(f"          {size_before:.1f} MB → {size_after:.1f} MB  (-{reduction:.0f}%)  images removed: {images_removed}")
 
             if size_after >= SIZE_LIMIT_MB:
-                log.warning(f"          Datei immer noch > {SIZE_LIMIT_MB} MB nach Komprimierung: {output_path.name}")
+                log.warning(f"          Output still exceeds {SIZE_LIMIT_MB} MB: {output_path.name}")
 
             processed += 1
         except Exception as e:
-            log.error(f"          FEHLER bei {relative}: {e}", exc_info=True)
+            log.error(f"          Failed to process {relative}: {e}", exc_info=True)
             errors += 1
 
     log.info("-" * 60)
-    log.info(f"Fertig — verarbeitet: {processed}, übersprungen: {skipped}, Fehler: {errors}")
-    log.info(f"Ausgabe-Dateien in: {OUTPUT_DIR}")
+    log.info(f"Done — processed: {processed}, skipped: {skipped}, errors: {errors}")
+    log.info(f"Output directory: {OUTPUT_DIR}")
 
 
 if __name__ == "__main__":

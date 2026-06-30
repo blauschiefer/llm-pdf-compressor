@@ -1,64 +1,71 @@
-# LLM PDF Compressor
+# llm-pdf-compressor
 
-Komprimiert PDF-Dateien auf unter 30 MB für die Nutzung mit Large Language Models (LLMs).
+A command-line tool that strips images from PDF files and compresses them to under 30 MB for use with large language models (LLMs).
 
-Bilder werden vollständig entfernt, da sie für die Textverarbeitung durch LLMs irrelevant sind. Dateien, die bereits kleiner als 30 MB sind, werden übersprungen.
+## Features
 
-## Voraussetzungen
+- Recursively scans an `input/` directory for PDF files
+- Skips files already under the 30 MB size limit
+- Removes embedded images (irrelevant for text-based LLM processing)
+- Preserves subdirectory structure in `output/`
+- Writes timestamped log files to `logs/`
+
+## Requirements
 
 - Python 3.10+
-- `pypdf` Bibliothek
+
+## Installation
 
 ```bash
-pip install pypdf
+git clone https://github.com/serveradmin9912/llm-pdf-compressor.git
+cd llm-pdf-compressor
+pip install -r requirements.txt
 ```
 
-## Ordnerstruktur
+## Usage
+
+Place PDF files in the `input/` directory, then run:
+
+**Windows**
+
+```bat
+compress.bat
+```
+
+**Command line**
+
+```bash
+python src/compress.py
+```
+
+Compressed files are written to `output/` with the suffix `_llm-optimized`.
+
+## Project Structure
 
 ```
 llm-pdf-compressor/
-├── compress_pdfs.bat       # Windows: Doppelklick zum Starten
-├── input/                  # PDFs hier ablegen (Unterordner werden unterstützt)
-├── output/                 # Komprimierte PDFs landen hier
-└── scripts/
-    └── compress_pdfs.py    # Haupt-Script
+├── src/
+│   └── compress.py       # Main script
+├── input/                # Place source PDFs here (gitignored)
+├── output/               # Compressed PDFs are written here (gitignored)
+├── logs/                 # Timestamped log files (gitignored)
+├── compress.bat          # Windows launcher
+├── requirements.txt
+└── README.md
 ```
 
-## Verwendung
-
-### Windows
-
-Doppelklick auf `compress_pdfs.bat`
-
-### Kommandozeile
-
-```bash
-python scripts/compress_pdfs.py
-```
-
-## Verhalten
-
-| Dateigröße | Aktion |
-|---|---|
-| < 30 MB | `[SKIP]` – wird nicht verarbeitet |
-| ≥ 30 MB | Bilder entfernen, komprimieren, als `*_llm-optimized.pdf` speichern |
-
-Unterordner im `input/` Ordner werden rekursiv durchsucht und die Ordnerstruktur im `output/` Ordner gespiegelt.
-
-### Beispiel-Output
+## Example Output
 
 ```
-Gefunden: 7 PDF-Datei(en)
-
-[SKIP]    Cornell und Schwertmann - 2003 - The Iron Oxides.pdf  (21.5 MB < 30 MB)
-[PROCESS] Dixon et al. - 1989 - Minerals in soil environments.pdf  (137.2 MB) ... 137.2 MB → 4.1 MB  (-97%)  [OK]
-[PROCESS] Joisten et al. - 2023 - Böden Deutschlands.pdf  (795.2 MB) ... 795.2 MB → 12.3 MB  (-98%)  [OK]
-
-Fertig. Ausgabe-Dateien in: C:\...\output
+2026-06-30 10:45:00  INFO      Found 7 PDF file(s)
+2026-06-30 10:45:00  INFO      ------------------------------------------------------------
+2026-06-30 10:45:00  INFO      [SKIP]    Cornell - 2003 - The Iron Oxides.pdf  (21.5 MB)
+2026-06-30 10:45:01  INFO      [PROCESS] Dixon - 1989 - Minerals in soil environments.pdf  (137.2 MB) ...
+2026-06-30 10:45:12  INFO                137.2 MB → 4.1 MB  (-97%)  images removed: 843
+2026-06-30 10:45:12  INFO      ------------------------------------------------------------
+2026-06-30 10:45:12  INFO      Done — processed: 1, skipped: 1, errors: 0
 ```
 
-## Hinweise
+## License
 
-- Die Original-Dateien im `input/` Ordner werden **nicht verändert**
-- Falls eine PDF nach der Komprimierung immer noch > 30 MB ist (z. B. sehr große reine Text-PDFs), erscheint eine `WARNUNG` in der Ausgabe
-- Bereits komprimierte Dateien (`*_llm-optimized.pdf`) im `output/` Ordner werden beim nächsten Durchlauf überschrieben
+MIT
