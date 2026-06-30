@@ -94,17 +94,12 @@ def main():
     log.info(f"Found {len(pdf_files)} PDF file(s)")
     log.info("-" * 60)
 
-    skipped = processed = errors = 0
+    processed = errors = 0
 
     for pdf_path in pdf_files:
         size_mb = pdf_path.stat().st_size / (1024 * 1024)
         relative = pdf_path.relative_to(INPUT_DIR)
         output_path = OUTPUT_DIR / relative.parent / (pdf_path.stem + OUTPUT_SUFFIX + pdf_path.suffix)
-
-        if size_mb < SIZE_LIMIT_MB:
-            log.info(f"[SKIP]    {relative}  ({size_mb:.1f} MB — already under {SIZE_LIMIT_MB} MB)")
-            skipped += 1
-            continue
 
         output_path.parent.mkdir(parents=True, exist_ok=True)
         log.info(f"[PROCESS] {relative}  ({size_mb:.1f} MB) ...")
@@ -128,7 +123,7 @@ def main():
             errors += 1
 
     log.info("-" * 60)
-    log.info(f"Done — processed: {processed}, skipped: {skipped}, errors: {errors}")
+    log.info(f"Done — processed: {processed}, errors: {errors}")
     log.info(f"Output directory: {OUTPUT_DIR}")
 
 
