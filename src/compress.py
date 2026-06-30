@@ -65,6 +65,18 @@ def strip_images(input_path: Path, output_path: Path) -> tuple[float, float, int
     return size_before, size_after, images_removed
 
 
+def recompress(pdf_path: Path, output_path: Path) -> float:
+    """Second pass: recompress streams to push file under 30 MB. Returns new size in MB."""
+    with pikepdf.open(str(pdf_path)) as pdf:
+        pdf.save(
+            str(output_path),
+            compress_streams=True,
+            object_stream_mode=pikepdf.ObjectStreamMode.generate,
+            recompress_flate=True,
+        )
+    return output_path.stat().st_size / (1024 * 1024)
+
+
 def main():
     log = setup_logging()
 
@@ -103,7 +115,12 @@ def main():
             log.info(f"          {size_before:.1f} MB → {size_after:.1f} MB  (-{reduction:.0f}%)  images removed: {images_removed}")
 
             if size_after >= SIZE_LIMIT_MB:
-                log.warning(f"          Still exceeds {SIZE_LIMIT_MB} MB after stripping: {output_path.name}")
+                log.info(f"          Still {size_after:.1f} MB — running recompression pass ...")
+                size_after = recompress(output_path, output_path)
+                reduction2 = (1 - size_after / size_before) * 100
+                log.info(f"          → {size_after:.1f} MB  (-{reduction2:.0f}% total)")
+                if size_after >= SIZE_LIMIT_MB:
+                    log.warning(f"          Still exceeds {SIZE_LIMIT_MB} MB after recompression: {output_path.name}")
 
             processed += 1
         except Exception as e:
