@@ -17,7 +17,7 @@ A command-line tool that strips images from PDF files and compresses them to und
 ## Installation
 
 ```bash
-git clone https://github.com/serveradmin9912/llm-pdf-compressor.git
+git clone https://github.com/blauschiefer/llm-pdf-compressor.git
 cd llm-pdf-compressor
 pip install -r requirements.txt
 ```
