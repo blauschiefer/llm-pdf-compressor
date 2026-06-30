@@ -67,7 +67,7 @@ def strip_images(input_path: Path, output_path: Path) -> tuple[float, float, int
 
 def recompress(pdf_path: Path, output_path: Path) -> float:
     """Second pass: recompress streams to push file under 30 MB. Returns new size in MB."""
-    with pikepdf.open(str(pdf_path)) as pdf:
+    with pikepdf.open(str(pdf_path), allow_overwriting_input=True) as pdf:
         pdf.save(
             str(output_path),
             compress_streams=True,
